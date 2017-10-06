@@ -1,0 +1,6 @@
+[package]
+name = "rawchat"
+version = "0.1.0"
+authors = ["Alexander Serebryakov <alex.serebr@gmail.com>"]
+
+[dependencies]
