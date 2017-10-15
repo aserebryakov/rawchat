@@ -1,23 +1,26 @@
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
+use std::thread;
 
 
-fn handle_client(mut stream: TcpStream) {
-    let _ = stream.write("Greetings!\n\0".as_bytes()).unwrap();
-    let _ = stream.write("Please enter your nickname: ".as_bytes()).unwrap();
+fn handle_client(mut stream: TcpStream) -> thread::JoinHandle<()> {
+    thread::spawn(|| {
+        let _ = stream.write("Greetings!\n\0".as_bytes()).unwrap();
+        let _ = stream.write("Please enter your nickname: ".as_bytes()).unwrap();
 
-    let mut nickname: String = String::new();
+        let mut nickname: String = String::new();
 
-    for b in stream.bytes() {
-        let c = b.unwrap() as char;
-        if c == '\n' {
-            break;
+        for b in stream.bytes() {
+            let c = b.unwrap() as char;
+            if c == '\n' {
+                break;
+            }
+
+            nickname.push(c);
         }
 
-        nickname.push(c);
-    }
-
-    println!("Clients nickname is {}", nickname);
+        println!("Clients nickname is {}", nickname);
+    })
 }
 
 
@@ -30,7 +33,8 @@ fn main() {
 
     for stream in listener.incoming() {
         println!("Client is connected...");
-        handle_client(stream.unwrap());
+        let h = handle_client(stream.unwrap());
+        h.join();
         println!("Client is disconnected...");
     }
 }
