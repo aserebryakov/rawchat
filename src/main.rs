@@ -3,13 +3,13 @@ use std::net::{TcpListener, TcpStream};
 use std::thread;
 
 
-fn read_line(mut stream: &TcpStream) -> Result<String, ()> {
+fn read_line(mut stream: &TcpStream) -> Result<String, std::io::Error> {
     let mut line = String::new();
     let mut end = false;
 
     while !end {
         let mut b : [u8; 1] = [0];
-        stream.read(&mut b).unwrap();
+        stream.read(&mut b)?;
 
         match b[0] as char {
             '\n' | '\0' => end = true,
