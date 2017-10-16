@@ -3,6 +3,13 @@ use std::net::{TcpListener, TcpStream};
 use std::thread;
 
 
+struct Client {
+    nickname : String,
+    stream : TcpStream,
+    thread_handle : thread::JoinHandle<()>,
+}
+
+
 fn read_line(mut stream: &TcpStream) -> Result<String, std::io::Error> {
     let mut line = String::new();
     let mut end = false;
