@@ -3,23 +3,32 @@ use std::net::{TcpListener, TcpStream};
 use std::thread;
 
 
-fn handle_client(mut stream: TcpStream) -> thread::JoinHandle<()> {
-    thread::spawn(|| {
+fn read_line(mut stream: &TcpStream) -> Result<String, ()> {
+    let mut line = String::new();
+    let mut end = false;
+
+    while !end {
+        let mut b : [u8; 1] = [0];
+        stream.read(&mut b).unwrap();
+
+        match b[0] as char {
+            '\n' | '\0' => end = true,
+            _ => line.push(b[0] as char),
+        }
+    }
+
+    Ok(line)
+}
+
+
+fn handle_client(mut stream: TcpStream) -> Result<thread::JoinHandle<()>, std::io::Error> {
+    let builder = thread::Builder::new();
+
+    builder.spawn(move || {
         let _ = stream.write("Greetings!\n\0".as_bytes()).unwrap();
         let _ = stream.write("Please enter your nickname: ".as_bytes()).unwrap();
 
-        let mut nickname: String = String::new();
-
-        for b in stream.bytes() {
-            let c = b.unwrap() as char;
-            if c == '\n' {
-                break;
-            }
-
-            nickname.push(c);
-        }
-
-        println!("Clients nickname is {}", nickname);
+        println!("Clients nickname is {}", read_line(&stream).unwrap());
     })
 }
 
@@ -33,8 +42,8 @@ fn main() {
 
     for stream in listener.incoming() {
         println!("Client is connected...");
-        let h = handle_client(stream.unwrap());
-        h.join();
+        let h = handle_client(stream.unwrap()).unwrap();
+        h.join().unwrap();
         println!("Client is disconnected...");
     }
 }
