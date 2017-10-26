@@ -1,6 +1,8 @@
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
 use std::thread;
+use std::sync::mpsc::channel;
+use std::sync::mpsc::Sender;
 
 
 struct Client {
@@ -28,15 +30,20 @@ fn read_line(mut stream: &TcpStream) -> Result<String, std::io::Error> {
 }
 
 
-fn handle_client(mut stream: TcpStream) -> Result<thread::JoinHandle<()>, std::io::Error> {
+fn handle_client<'a>(mut stream: TcpStream) -> Result<Sender<&'a[u8]>, std::io::Error> {
     let builder = thread::Builder::new();
+    let (sender , receiver) = channel();
 
     builder.spawn(move || {
         let _ = stream.write("Greetings!\n\0".as_bytes()).unwrap();
         let _ = stream.write("Please enter your nickname: ".as_bytes()).unwrap();
 
         println!("Clients nickname is {}", read_line(&stream).unwrap());
-    })
+
+        let _ = stream.write(receiver.recv().unwrap());
+    });
+
+    Ok(sender)
 }
 
 
@@ -49,8 +56,8 @@ fn main() {
 
     for stream in listener.incoming() {
         println!("Client is connected...");
-        let h = handle_client(stream.unwrap()).unwrap();
-        h.join().unwrap();
+        let sender = handle_client(stream.unwrap()).unwrap();
+        sender.send("Greetings!".as_bytes());
         println!("Client is disconnected...");
     }
 }
