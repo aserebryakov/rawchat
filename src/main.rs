@@ -55,8 +55,9 @@ fn main() {
 
         let client_tx = handle_client(stream.unwrap(), tx.clone()).unwrap();
         let nickname = rx.recv().unwrap();
+        let greeting = format!("Welcome, {}!\n", nickname);
 
         println!("Clients nickname is {}", nickname);
-        client_tx.send(String::from("Greetings From Server!\n")).unwrap();
+        client_tx.send(greeting).unwrap();
     }
 }
