@@ -3,6 +3,7 @@ use std::net::{TcpListener, TcpStream};
 use std::thread;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
+use std::sync::mpsc::Receiver;
 
 
 struct Client {
@@ -30,9 +31,9 @@ fn read_line(mut stream: &TcpStream) -> Result<String, std::io::Error> {
 }
 
 
-fn handle_client<'a>(mut stream: TcpStream) -> Result<Sender<&'a[u8]>, std::io::Error> {
+fn handle_client(mut stream: TcpStream) -> Result<Sender<String>, std::io::Error> {
     let builder = thread::Builder::new();
-    let (sender , receiver) = channel();
+    let (sender , receiver) : (Sender<String>, Receiver<String>)  = channel();
 
     builder.spawn(move || {
         let _ = stream.write("Greetings!\n\0".as_bytes()).unwrap();
@@ -40,7 +41,7 @@ fn handle_client<'a>(mut stream: TcpStream) -> Result<Sender<&'a[u8]>, std::io::
 
         println!("Clients nickname is {}", read_line(&stream).unwrap());
 
-        let _ = stream.write(receiver.recv().unwrap());
+        let _ = stream.write(&receiver.recv().unwrap().into_bytes());
     });
 
     Ok(sender)
@@ -57,7 +58,6 @@ fn main() {
     for stream in listener.incoming() {
         println!("Client is connected...");
         let sender = handle_client(stream.unwrap()).unwrap();
-        sender.send("Greetings!".as_bytes());
-        println!("Client is disconnected...");
+        sender.send(String::from("Greetings From Server!\n"));
     }
 }
