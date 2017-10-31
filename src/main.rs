@@ -42,22 +42,28 @@ fn handle_client(mut stream: TcpStream, server_tx : Sender<String>) -> Result<Se
 }
 
 
+
 fn main() {
     println!("Initializing...");
 
     let listener = TcpListener::bind("127.0.0.1:40000").unwrap();
-    let (tx, rx) : (Sender<String>, Receiver<String>)  = channel();
 
     println!("Waiting for clients...");
 
     for stream in listener.incoming() {
         println!("Client is connected...");
 
-        let client_tx = handle_client(stream.unwrap(), tx.clone()).unwrap();
-        let nickname = rx.recv().unwrap();
-        let greeting = format!("Welcome, {}!\n", nickname);
+        let builder = thread::Builder::new();
+        let (tx, rx) : (Sender<String>, Receiver<String>)  = channel();
 
-        println!("Clients nickname is {}", nickname);
-        client_tx.send(greeting).unwrap();
+        builder.spawn(move || {
+
+            let client_tx = handle_client(stream.unwrap(), tx.clone()).unwrap();
+            let nickname = rx.recv().unwrap();
+            let greeting = format!("Welcome, {}!\n", nickname);
+
+            println!("Clients nickname is {}", nickname);
+            client_tx.send(greeting).unwrap();
+        }).unwrap();
     }
 }
