@@ -31,11 +31,10 @@ fn client_main(mut stream: TcpStream, server_tx: Sender<String>, client_rx: Rece
     let mut end = false;
 
     while !end {
-        println!("client loop");
         match read_line(&stream) {
-            Ok(line) => server_tx.send(nickname.clone() + line.as_str()).unwrap(),
+            Ok(line) => server_tx.send(nickname.clone() + " : " + line.as_str() + "\n").unwrap(),
             Err(e) => match e.kind() {
-               ErrorKind::TimedOut => end = false, 
+               ErrorKind::TimedOut | ErrorKind::WouldBlock => (),
                e => {
                    println!("{:?}", e);
                    end = true;
@@ -74,6 +73,26 @@ fn handle_client(mut stream: TcpStream, server_tx : Sender<String>) -> Result<Se
 }
 
 
+fn handle_connection(stream: TcpStream) {
+    let builder = thread::Builder::new();
+    let (tx, rx) : (Sender<String>, Receiver<String>)  = channel();
+
+    builder.spawn(move || {
+        let client_tx = handle_client(stream, tx.clone()).unwrap();
+        let nickname = rx.recv().unwrap();
+        let greeting = format!("Welcome, {}!\n", nickname);
+
+        println!("Clients nickname is {}", nickname);
+        client_tx.send(greeting).unwrap();
+
+        while true {
+            let line = rx.recv().unwrap();
+            println!("{}", line);
+            client_tx.send(String::from(line.as_str())).unwrap();
+        }
+    }).unwrap();
+}
+
 
 fn main() {
     println!("Initializing...");
@@ -84,18 +103,6 @@ fn main() {
 
     for stream in listener.incoming() {
         println!("Client is connected...");
-
-        let builder = thread::Builder::new();
-        let (tx, rx) : (Sender<String>, Receiver<String>)  = channel();
-
-        builder.spawn(move || {
-            let client_tx = handle_client(stream.unwrap(), tx.clone()).unwrap();
-            let nickname = rx.recv().unwrap();
-            let greeting = format!("Welcome, {}!\n", nickname);
-
-            println!("Clients nickname is {}", nickname);
-            client_tx.send(greeting).unwrap();
-            client_tx.send(String::from("test")).unwrap();
-        }).unwrap();
+        handle_connection(stream.unwrap());
     }
 }
