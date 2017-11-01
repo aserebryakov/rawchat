@@ -6,6 +6,19 @@ use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
+use std::collections::HashMap;
+
+
+struct ClientInfo {
+    nickname : String,
+    tx : Sender<String>,
+}
+
+enum Message{
+    Connect(ClientInfo),
+    Disconnect(ClientInfo),
+    Text(String),
+}
 
 
 fn read_line(mut stream: &TcpStream) -> Result<String, std::io::Error> {
@@ -26,13 +39,59 @@ fn read_line(mut stream: &TcpStream) -> Result<String, std::io::Error> {
 }
 
 
-fn client_main(mut stream: TcpStream, server_tx: Sender<String>, client_rx: Receiver<String>, nickname : String) {
+fn run_server_main(rx : Receiver<Message>) {
+    let builder = thread::Builder::new();
+
+    let _ = builder.spawn(move || {
+        let mut clients = HashMap::new();
+        println!("Running server main...");
+
+        while true {
+            match rx.recv().unwrap() {
+                Message::Connect(info) => {
+                    println!("{} is connected", info.nickname);
+                    let _ = info.tx.send(format!("Greetings, {}\n", info.nickname.clone()));
+                    clients.insert(info.nickname.clone(), info);
+                    ()
+                },
+                Message::Disconnect(info) => {
+                    clients.remove(&info.nickname);
+                    ()
+                },
+                Message::Text(text) => {
+                    for (_, val) in clients.iter() {
+                        val.tx.send(text.clone()).unwrap();
+                    }
+                },
+            };
+        }
+    }).unwrap();
+}
+
+
+fn run_connection_handler(server_tx : Sender<Message>) {
+    let listener = TcpListener::bind("127.0.0.1:40000").unwrap();
+
+    println!("Waiting for clients...");
+
+    for stream in listener.incoming() {
+        let builder = thread::Builder::new();
+        let server_tx = server_tx.clone();
+
+        let _ = builder.spawn(move || {
+            run_client(stream.unwrap(), server_tx);
+        }).unwrap();
+    }
+}
+
+
+fn client_main(mut stream: TcpStream, server_tx: Sender<Message>, client_rx: Receiver<String>, nickname : String) {
     let _ = stream.set_read_timeout(Some(Duration::new(1, 0)));
     let mut end = false;
 
     while !end {
         match read_line(&stream) {
-            Ok(line) => server_tx.send(nickname.clone() + " : " + line.as_str() + "\n").unwrap(),
+            Ok(line) => server_tx.send(Message::Text(nickname.clone() + " : " + line.as_str() + "\n")).unwrap(),
             Err(e) => match e.kind() {
                ErrorKind::TimedOut | ErrorKind::WouldBlock => (),
                e => {
@@ -52,8 +111,7 @@ fn client_main(mut stream: TcpStream, server_tx: Sender<String>, client_rx: Rece
 }
 
 
-fn handle_client(mut stream: TcpStream, server_tx : Sender<String>) -> Result<Sender<String>, std::io::Error> {
-
+fn run_client(mut stream: TcpStream, server_tx : Sender<Message>){
     let (tx, rx) : (Sender<String>, Receiver<String>)  = channel();
 
     let builder = thread::Builder::new();
@@ -63,33 +121,10 @@ fn handle_client(mut stream: TcpStream, server_tx : Sender<String>) -> Result<Se
 
         let nickname = read_line(&stream).unwrap();
 
-        let _ = server_tx.send(nickname.clone());
-        let _ = stream.write(&rx.recv().unwrap().into_bytes()).unwrap();
+        let info = ClientInfo{ nickname : nickname.clone(), tx };
+        let _ = server_tx.send(Message::Connect(info)).unwrap();
 
         client_main(stream, server_tx, rx, nickname);
-    }).unwrap();
-
-    Ok(tx)
-}
-
-
-fn handle_connection(stream: TcpStream) {
-    let builder = thread::Builder::new();
-    let (tx, rx) : (Sender<String>, Receiver<String>)  = channel();
-
-    builder.spawn(move || {
-        let client_tx = handle_client(stream, tx.clone()).unwrap();
-        let nickname = rx.recv().unwrap();
-        let greeting = format!("Welcome, {}!\n", nickname);
-
-        println!("Clients nickname is {}", nickname);
-        client_tx.send(greeting).unwrap();
-
-        while true {
-            let line = rx.recv().unwrap();
-            println!("{}", line);
-            client_tx.send(String::from(line.as_str())).unwrap();
-        }
     }).unwrap();
 }
 
@@ -97,12 +132,8 @@ fn handle_connection(stream: TcpStream) {
 fn main() {
     println!("Initializing...");
 
-    let listener = TcpListener::bind("127.0.0.1:40000").unwrap();
+    let (tx, rx) : (Sender<Message>, Receiver<Message>)  = channel();
 
-    println!("Waiting for clients...");
-
-    for stream in listener.incoming() {
-        println!("Client is connected...");
-        handle_connection(stream.unwrap());
-    }
+    run_server_main(rx);
+    run_connection_handler(tx);
 }
