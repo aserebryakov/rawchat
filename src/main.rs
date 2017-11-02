@@ -50,7 +50,8 @@ fn run_server_main(rx : Receiver<Message>) {
             match rx.recv().unwrap() {
                 Message::Connect(info) => {
                     println!("{} is connected", info.nickname);
-                    let _ = info.tx.send(format!("Greetings, {}\n", info.nickname.clone()));
+                    let _ = info.tx.send(format!("Greetings, {}\n", info.nickname));
+                    multicast_text(&clients, format!("server: {} is joined to conversation\n", info.nickname));
                     clients.insert(info.nickname.clone(), info);
                     ()
                 },
@@ -59,13 +60,18 @@ fn run_server_main(rx : Receiver<Message>) {
                     ()
                 },
                 Message::Text(text) => {
-                    for (_, val) in clients.iter() {
-                        val.tx.send(text.clone()).unwrap();
-                    }
+                    multicast_text(&clients, text)
                 },
             };
         }
     }).unwrap();
+}
+
+
+fn multicast_text(clients : &HashMap<String, ClientInfo>, text: String) {
+    for (_, val) in clients.iter() {
+        val.tx.send(text.clone()).unwrap();
+    }
 }
 
 
