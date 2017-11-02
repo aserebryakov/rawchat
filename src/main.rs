@@ -80,7 +80,7 @@ fn multicast_text(clients : &HashMap<String, ClientInfo>, text: String) {
 
 
 fn run_connection_handler(server_tx : Sender<Message>) {
-    let listener = TcpListener::bind("127.0.0.1:40000").unwrap();
+    let listener = TcpListener::bind("0.0.0.0:40000").unwrap();
 
     println!("Waiting for clients...");
 
