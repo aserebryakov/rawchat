@@ -1,10 +1,8 @@
 use std::io::prelude::*;
 use std::io::ErrorKind;
 use std::net::{TcpListener, TcpStream};
-use std::thread;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::Sender;
-use std::sync::mpsc::Receiver;
+use std::thread::{Builder, JoinHandle};
+use std::sync::mpsc::{channel, Sender, Receiver};
 use std::time::Duration;
 use std::collections::HashMap;
 
@@ -42,33 +40,40 @@ fn read_line(mut stream: &TcpStream) -> Result<String, std::io::Error> {
 }
 
 
-fn run_server_main(rx : Receiver<Message>) {
-    let builder = thread::Builder::new();
+fn run_server_main(rx : Receiver<Message>) -> Result<JoinHandle<()>, std::io::Error> {
+    let builder = Builder::new();
 
-    let _ = builder.spawn(move || {
+    builder.spawn(move || {
         let mut clients = HashMap::new();
+        let mut end = false;
         println!("Running server main...");
 
-        while true {
-            match rx.recv().unwrap() {
-                Message::Connect(info) => {
-                    println!("{} is connected", info.nickname);
-                    let _ = info.tx.send(format!("Greetings, {}\n", info.nickname));
-                    multicast_text(&clients, format!("server: {} is joined to conversation\n", info.nickname));
-                    clients.insert(info.nickname.clone(), info);
-                    ()
-                },
-                Message::Disconnect(nickname) => {
-                    clients.remove(&nickname);
-                    multicast_text(&clients, format!("server: {} left\n", nickname));
-                    ()
-                },
-                Message::Text(text) => {
-                    multicast_text(&clients, text)
-                },
+        while !end {
+            match rx.recv() {
+                Ok(value) => match value {
+                    Message::Connect(info) => {
+                        println!("{} is connected", info.nickname);
+                        let _ = info.tx.send(format!("Greetings, {}\n", info.nickname));
+                        multicast_text(&clients, format!("server: {} is joined to conversation\n", info.nickname));
+                        clients.insert(info.nickname.clone(), info);
+                    },
+                    Message::Disconnect(nickname) => {
+                        clients.remove(&nickname);
+                        println!("{} is disconnected", nickname);
+                        multicast_text(&clients, format!("server: {} left\n", nickname));
+                    },
+                    Message::Text(text) => {
+                        multicast_text(&clients, text);
+                    },
+                }
+                Err(e) => {
+                   println!("{:?}", e);
+                   multicast_text(&clients, String::from("Server fault. You are disconnected.\n"));
+                   end = true;
+                }
             };
         }
-    }).unwrap();
+    })
 }
 
 
@@ -79,19 +84,21 @@ fn multicast_text(clients : &HashMap<String, ClientInfo>, text: String) {
 }
 
 
-fn run_connection_handler(server_tx : Sender<Message>) {
-    let listener = TcpListener::bind("0.0.0.0:40000").unwrap();
+fn run_connection_handler(server_tx : Sender<Message>) -> Result<(), std::io::Error> {
+    let listener = TcpListener::bind("0.0.0.0:40000")?;
 
     println!("Waiting for clients...");
 
     for stream in listener.incoming() {
-        let builder = thread::Builder::new();
+        let builder = Builder::new();
         let server_tx = server_tx.clone();
 
-        let _ = builder.spawn(move || {
+        builder.spawn(move || {
             run_client(stream.unwrap(), server_tx);
-        }).unwrap();
+        })?;
     }
+
+    Ok(())
 }
 
 
@@ -125,7 +132,7 @@ fn client_main(mut stream: TcpStream, server_tx: Sender<Message>, client_rx: Rec
 fn run_client(mut stream: TcpStream, server_tx : Sender<Message>){
     let (tx, rx) : (Sender<String>, Receiver<String>)  = channel();
 
-    let builder = thread::Builder::new();
+    let builder = Builder::new();
     builder.spawn(move || {
         let _ = stream.write("Greetings!\n\0".as_bytes()).unwrap();
         let _ = stream.write("Please enter your nickname: ".as_bytes()).unwrap();
@@ -145,6 +152,6 @@ fn main() {
 
     let (tx, rx) : (Sender<Message>, Receiver<Message>)  = channel();
 
-    run_server_main(rx);
-    run_connection_handler(tx);
+    run_server_main(rx).expect("Failed to run server main");
+    run_connection_handler(tx).expect("Error on connection handling");
 }
