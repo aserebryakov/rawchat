@@ -16,7 +16,7 @@ struct ClientInfo {
 
 enum Message{
     Connect(ClientInfo),
-    Disconnect(ClientInfo),
+    Disconnect(String),
     Text(String),
 }
 
@@ -30,7 +30,10 @@ fn read_line(mut stream: &TcpStream) -> Result<String, std::io::Error> {
         stream.read(&mut b)?;
 
         match b[0] as char {
-            '\n' | '\0' => end = true,
+            '\n' => end = true,
+            '\0' => {
+                    return Err(std::io::Error::new(ErrorKind::UnexpectedEof , "Disconnect"))
+                },
             _ => line.push(b[0] as char),
         }
     }
@@ -55,8 +58,9 @@ fn run_server_main(rx : Receiver<Message>) {
                     clients.insert(info.nickname.clone(), info);
                     ()
                 },
-                Message::Disconnect(info) => {
-                    clients.remove(&info.nickname);
+                Message::Disconnect(nickname) => {
+                    clients.remove(&nickname);
+                    multicast_text(&clients, format!("server: {} left\n", nickname));
                     ()
                 },
                 Message::Text(text) => {
@@ -103,6 +107,7 @@ fn client_main(mut stream: TcpStream, server_tx: Sender<Message>, client_rx: Rec
                e => {
                    println!("{:?}", e);
                    end = true;
+                   server_tx.send(Message::Disconnect(nickname.clone())).unwrap();
                },
             }
         };
