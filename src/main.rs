@@ -12,6 +12,7 @@ struct ClientInfo {
     tx : Sender<String>,
 }
 
+
 enum Message{
     Connect(ClientInfo),
     Disconnect(String),
@@ -21,14 +22,13 @@ enum Message{
 
 fn read_line(mut stream: &TcpStream) -> Result<String, std::io::Error> {
     let mut line = String::new();
-    let mut end = false;
 
-    while !end {
+    loop {
         let mut b : [u8; 1] = [0];
         stream.read(&mut b)?;
 
         match b[0] as char {
-            '\n' => end = true,
+            '\n' => break,
             '\0' => {
                     return Err(std::io::Error::new(ErrorKind::UnexpectedEof , "Disconnect"))
                 },
@@ -104,17 +104,16 @@ fn run_connection_handler(server_tx : Sender<Message>) -> Result<(), std::io::Er
 
 fn client_main(mut stream: TcpStream, server_tx: Sender<Message>, client_rx: Receiver<String>, nickname : String) {
     let _ = stream.set_read_timeout(Some(Duration::new(1, 0)));
-    let mut end = false;
 
-    while !end {
+    loop {
         match read_line(&stream) {
             Ok(line) => server_tx.send(Message::Text(nickname.clone() + " : " + line.as_str() + "\n")).unwrap(),
             Err(e) => match e.kind() {
                ErrorKind::TimedOut | ErrorKind::WouldBlock => (),
                e => {
                    println!("{:?}", e);
-                   end = true;
                    server_tx.send(Message::Disconnect(nickname.clone())).unwrap();
+                   break;
                },
             }
         };
