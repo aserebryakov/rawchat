@@ -45,10 +45,10 @@ fn run_server_main(rx : Receiver<Message>) -> Result<JoinHandle<()>, std::io::Er
 
     builder.spawn(move || {
         let mut clients = HashMap::new();
-        let mut end = false;
+
         println!("Running server main...");
 
-        while !end {
+        loop {
             match rx.recv() {
                 Ok(value) => match value {
                     Message::Connect(info) => {
@@ -69,7 +69,7 @@ fn run_server_main(rx : Receiver<Message>) -> Result<JoinHandle<()>, std::io::Er
                 Err(e) => {
                    println!("{:?}", e);
                    multicast_text(&clients, String::from("Server fault. You are disconnected.\n"));
-                   end = true;
+                   break;
                 }
             };
         }
