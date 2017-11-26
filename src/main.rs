@@ -7,6 +7,9 @@ use std::time::Duration;
 use std::collections::HashMap;
 
 
+mod utils;
+
+
 struct ClientInfo {
     nickname : String,
     tx : Sender<String>,
@@ -17,26 +20,6 @@ enum Message{
     Connect(ClientInfo),
     Disconnect(String),
     Text(String),
-}
-
-
-fn read_line(mut stream: &TcpStream) -> Result<String, std::io::Error> {
-    let mut line = String::new();
-
-    loop {
-        let mut b : [u8; 1] = [0];
-        stream.read(&mut b)?;
-
-        match b[0] as char {
-            '\n' => break,
-            '\0' => {
-                    return Err(std::io::Error::new(ErrorKind::UnexpectedEof , "Disconnect"))
-                },
-            _ => line.push(b[0] as char),
-        }
-    }
-
-    Ok(line)
 }
 
 
@@ -106,7 +89,7 @@ fn client_main(mut stream: TcpStream, server_tx: Sender<Message>, client_rx: Rec
     let _ = stream.set_read_timeout(Some(Duration::new(1, 0)));
 
     loop {
-        match read_line(&stream) {
+        match utils::read_line(&stream) {
             Ok(line) => server_tx.send(Message::Text(nickname.clone() + " : " + line.as_str() + "\n")).unwrap(),
             Err(e) => match e.kind() {
                ErrorKind::TimedOut | ErrorKind::WouldBlock => (),
@@ -136,7 +119,7 @@ fn run_client(mut stream: TcpStream, server_tx : Sender<Message>){
         let _ = stream.write("Greetings!\n\0".as_bytes()).unwrap();
         let _ = stream.write("Please enter your nickname: ".as_bytes()).unwrap();
 
-        let nickname = read_line(&stream).unwrap();
+        let nickname = utils::read_line(&stream).unwrap();
 
         let info = ClientInfo{ nickname : nickname.clone(), tx };
         let _ = server_tx.send(Message::Connect(info)).unwrap();
