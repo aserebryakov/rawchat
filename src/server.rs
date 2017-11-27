@@ -8,28 +8,66 @@ use std::collections::HashMap;
 use client;
 
 
-pub struct Server {
+pub fn initialize() {
+    println!("Initializing...");
+    let (tx, rx) : (Sender<client::Message>, Receiver<client::Message>)  = channel();
+
+    Server::new(rx).run().expect("Server running failed");
+    Listener::new(tx).listen().expect("Listening failed");
+}
+
+
+struct Server {
+    rx : Receiver<client::Message>,
+}
+
+
+struct Listener {
+    listener : TcpListener,
+    tx : Sender<client::Message>,
+}
+
+
+impl Listener {
+    pub fn new(tx : Sender<client::Message>) -> Listener {
+        let listener = TcpListener::bind("0.0.0.0:40000").expect("Failed to bind the socket");
+        Listener{ listener, tx }
+    }
+
+
+    pub fn listen(self) -> Result<(), std::io::Error> {
+
+        println!("Waiting for clients...");
+
+        for stream in self.listener.incoming() {
+            let builder = Builder::new();
+            let server_tx = self.tx.clone();
+
+            builder.spawn(move || {
+                client::Client::new(stream.unwrap(), server_tx);
+            })?;
+        }
+
+        Ok(())
+    }
 }
 
 
 impl Server {
-    pub fn new() {
-        let (tx, rx) : (Sender<client::Message>, Receiver<client::Message>)  = channel();
-        Server::run(rx).expect("Server initialization failed");
-        Server::listen(tx).expect("Listener initialization failed");
+    pub fn new(rx : Receiver<client::Message>) -> Server {
+        Server{ rx }
     }
 
 
-    pub fn run(rx : Receiver<client::Message>) -> Result<JoinHandle<()>, std::io::Error> {
+    pub fn run(self) -> Result<JoinHandle<()>, std::io::Error> {
         let builder = Builder::new();
-
-        let mut clients = HashMap::new();
 
         builder.spawn(move || {
             println!("Running server main...");
+            let mut clients = HashMap::new();
 
             loop {
-                match rx.recv() {
+                match self.rx.recv() {
                     Ok(value) => match value {
                         client::Message::Connect(info) => {
                             println!("{} is connected", info.nickname);
@@ -54,24 +92,6 @@ impl Server {
                 };
             }
         })
-    }
-
-
-    pub fn listen(tx : Sender<client::Message>) -> Result<(), std::io::Error> {
-        let listener = TcpListener::bind("0.0.0.0:40000")?;
-
-        println!("Waiting for clients...");
-
-        for stream in listener.incoming() {
-            let builder = Builder::new();
-            let server_tx = tx.clone();
-
-            builder.spawn(move || {
-                client::Client::new(stream.unwrap(), server_tx);
-            })?;
-        }
-
-        Ok(())
     }
 
 
