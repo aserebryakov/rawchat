@@ -10,7 +10,7 @@ use client;
 
 pub fn initialize() {
     println!("Initializing...");
-    let (tx, rx) : (Sender<client::Message>, Receiver<client::Message>)  = channel();
+    let (tx, rx): (Sender<client::Message>, Receiver<client::Message>) = channel();
 
     Server::new(rx).run().expect("Server running failed");
     Listener::new(tx).listen().expect("Listening failed");
@@ -18,20 +18,20 @@ pub fn initialize() {
 
 
 struct Server {
-    rx : Receiver<client::Message>,
+    rx: Receiver<client::Message>,
 }
 
 
 struct Listener {
-    listener : TcpListener,
-    tx : Sender<client::Message>,
+    listener: TcpListener,
+    tx: Sender<client::Message>,
 }
 
 
 impl Listener {
-    pub fn new(tx : Sender<client::Message>) -> Listener {
+    pub fn new(tx: Sender<client::Message>) -> Listener {
         let listener = TcpListener::bind("0.0.0.0:40000").expect("Failed to bind the socket");
-        Listener{ listener, tx }
+        Listener { listener, tx }
     }
 
 
@@ -54,8 +54,8 @@ impl Listener {
 
 
 impl Server {
-    pub fn new(rx : Receiver<client::Message>) -> Server {
-        Server{ rx }
+    pub fn new(rx: Receiver<client::Message>) -> Server {
+        Server { rx }
     }
 
 
@@ -72,30 +72,36 @@ impl Server {
                         client::Message::Connect(info) => {
                             println!("{} is connected", info.nickname);
                             let _ = info.tx.send(format!("Greetings, {}\n", info.nickname));
-                            Server::multicast_text(&clients, format!("server: {} is joined to conversation\n", info.nickname));
+
+                            Server::multicast_text(&clients,
+                                format!("server: {} is joined to conversation\n", info.nickname));
+
                             clients.insert(info.nickname.clone(), info);
                         },
                         client::Message::Disconnect(nickname) => {
                             clients.remove(&nickname);
                             println!("{} is disconnected", nickname);
-                            Server::multicast_text(&clients, format!("server: {} left\n", nickname));
+
+                            Server::multicast_text(&clients,
+                                format!("server: {} left\n", nickname));
                         },
                         client::Message::Text(text) => {
                             Server::multicast_text(&clients, text);
                         },
-                    }
+                    },
                     Err(e) => {
-                       println!("{:?}", e);
-                       Server::multicast_text(&clients, String::from("Server fault. You are disconnected.\n"));
-                       break;
-                    }
+                        println!("{:?}", e);
+                        Server::multicast_text(&clients,
+                            String::from("Server fault. You are disconnected.\n"));
+                        break;
+                    },
                 };
             }
         })
     }
 
 
-    fn multicast_text(clients : &HashMap<String, client::ClientInfo>, text: String) {
+    fn multicast_text(clients: &HashMap<String, client::ClientInfo>, text: String) {
         for (_, val) in clients.iter() {
             val.tx.send(text.clone()).unwrap();
         }
