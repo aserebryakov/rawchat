@@ -1,8 +1,6 @@
-mod utils;
-mod client;
-mod server;
+extern crate rawchatserver;
 
 
 fn main() {
-    server::initialize();
+    rawchatserver::run();
 }

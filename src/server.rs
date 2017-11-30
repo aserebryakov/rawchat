@@ -1,28 +1,19 @@
 use std;
 use std::net::TcpListener;
 use std::thread::{Builder, JoinHandle};
-use std::sync::mpsc::{channel, Sender, Receiver};
+use std::sync::mpsc::{Sender, Receiver};
 use std::collections::HashMap;
 
 
 use client;
 
 
-pub fn initialize() {
-    println!("Initializing...");
-    let (tx, rx): (Sender<client::Message>, Receiver<client::Message>) = channel();
-
-    Server::new(rx).run().expect("Server running failed");
-    Listener::new(tx).listen().expect("Listening failed");
-}
-
-
-struct Server {
+pub struct Server {
     rx: Receiver<client::Message>,
 }
 
 
-struct Listener {
+pub struct Listener {
     listener: TcpListener,
     tx: Sender<client::Message>,
 }
