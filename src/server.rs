@@ -28,14 +28,17 @@ impl Listener {
 
     pub fn listen(self) -> Result<(), std::io::Error> {
 
-        println!("Waiting for clients...");
+        println!("Waiting for connections...");
 
         for stream in self.listener.incoming() {
             let builder = Builder::new();
             let server_tx = self.tx.clone();
 
             builder.spawn(move || {
-                client::Client::new(stream.unwrap(), server_tx);
+                match stream {
+                    Ok(stream) => client::Client::new(stream, server_tx),
+                    Err(e) => eprintln!("Couln't handle a connection {:?}", e),
+                };
             })?;
         }
 
