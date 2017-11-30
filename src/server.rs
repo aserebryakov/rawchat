@@ -20,9 +20,9 @@ pub struct Listener {
 
 
 impl Listener {
-    pub fn new(tx: Sender<client::Message>) -> Listener {
-        let listener = TcpListener::bind("0.0.0.0:40000").expect("Failed to bind the socket");
-        Listener { listener, tx }
+    pub fn new(tx: Sender<client::Message>) -> Result<Listener, std::io::Error> {
+        let listener = TcpListener::bind("0.0.0.0:40000")?;
+        Ok(Listener { listener, tx })
     }
 
 
