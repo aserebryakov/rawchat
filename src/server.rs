@@ -36,7 +36,11 @@ impl Listener {
 
             builder.spawn(move || {
                 match stream {
-                    Ok(stream) => client::Client::new(stream, server_tx),
+                    Ok(stream) => {
+                        if let Err(e) = client::Client::new(stream, server_tx) {
+                            eprintln!("Failed to create a client {:?}", e);
+                        }
+                    }
                     Err(e) => eprintln!("Couln't handle a connection {:?}", e),
                 };
             })?;

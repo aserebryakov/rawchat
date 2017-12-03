@@ -1,3 +1,4 @@
+use std;
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::net::TcpStream;
 use std::io::{ErrorKind, Write};
@@ -38,57 +39,66 @@ pub struct Client {
 
 
 impl Client {
-    pub fn new(mut stream: TcpStream, server_tx: Sender<Message>) {
+    pub fn new(mut stream: TcpStream, server_tx: Sender<Message>) -> Result<(), std::io::Error> {
         let (tx, rx): (Sender<String>, Receiver<String>) = channel();
 
         let builder = Builder::new();
-        builder
-            .spawn(move || {
-                let _ = stream.write("Greetings!\n\0".as_bytes()).unwrap();
-                let _ = stream
-                    .write("Please enter your nickname: ".as_bytes())
-                    .unwrap();
+        builder.spawn(move || {
+            let _ = stream
+                .write("Greetings!\nPlease enter your nickname: ".as_bytes())
+                .unwrap();
+            let nickname = utils::read_line(&stream).unwrap();
 
-                let nickname = utils::read_line(&stream).unwrap();
+            let info = ClientInfo { nickname, tx };
 
-                let info = ClientInfo {
-                    nickname: nickname.clone(),
-                    tx,
-                };
+            let _ = server_tx.send(Message::Connect(info.clone())).unwrap();
 
-                let _ = server_tx.send(Message::Connect(info.clone())).unwrap();
+            if let Err(e) = Client::main_loop(
+                Client { info: info.clone() },
+                stream,
+                &server_tx,
+                rx,
+            )
+            {
+                eprintln!("Client exit with error {:?}", e);
+                if let Err(e) = server_tx.send(Message::Disconnect(String::from(
+                    format!("{} disconnected", info.nickname.clone()),
+                )))
+                {
+                    eprintln!("Couldn't send the disconnect {:?}", e);
+                }
+            }
+        })?;
 
-                Client::main_loop(Client { info: info }, stream, server_tx, rx);
-            })
-            .unwrap();
+        Ok(())
     }
 
 
     fn main_loop(
         self,
         mut stream: TcpStream,
-        server_tx: Sender<Message>,
+        server_tx: &Sender<Message>,
         client_rx: Receiver<String>,
-    ) {
+    ) -> Result<(), std::sync::mpsc::SendError<Message>> {
         let _ = stream.set_read_timeout(Some(Duration::new(1, 0)));
 
         loop {
             match utils::read_line(&stream) {
                 Ok(line) => {
-                    server_tx
-                        .send(Message::Text(
-                            self.info.nickname.clone() + " : " + line.as_str() + "\n",
-                        ))
-                        .unwrap()
+                    server_tx.send(Message::Text(
+                        self.info.nickname.clone() + " : " +
+                            line.as_str() + "\n",
+                    ))?;
                 }
                 Err(e) => {
                     match e.kind() {
                         ErrorKind::TimedOut | ErrorKind::WouldBlock => (),
                         e => {
                             println!("{:?}", e);
-                            server_tx
-                                .send(Message::Disconnect(self.info.nickname.clone()))
-                                .unwrap();
+                            server_tx.send(
+                                Message::Disconnect(self.info.nickname.clone()),
+                            )?;
+
                             break;
                         }
                     }
@@ -104,5 +114,7 @@ impl Client {
                 _ => (),
             };
         }
+
+        Ok(())
     }
 }
