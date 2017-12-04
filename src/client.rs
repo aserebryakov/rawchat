@@ -25,7 +25,7 @@ impl Clone for ClientInfo {
 }
 
 
-pub enum Message {
+pub enum ClientMessage {
     Connect(ClientInfo),
     Disconnect(String),
     Text(String),
@@ -38,7 +38,10 @@ pub struct Client {
 
 
 impl Client {
-    pub fn new(mut stream: TcpStream, server_tx: Sender<Message>) -> Result<(), std::io::Error> {
+    pub fn new(
+        mut stream: TcpStream,
+        server_tx: Sender<ClientMessage>,
+    ) -> Result<(), std::io::Error> {
         let (tx, rx): (Sender<ServerMessage>, Receiver<ServerMessage>) = channel();
 
         let builder = Builder::new();
@@ -52,7 +55,9 @@ impl Client {
 
             let info = ClientInfo { nickname, tx };
 
-            let _ = server_tx.send(Message::Connect(info.clone())).unwrap();
+            let _ = server_tx
+                .send(ClientMessage::Connect(info.clone()))
+                .unwrap();
 
             if let Err(e) = Client::main_loop(
                 Client { info: info.clone() },
@@ -62,7 +67,7 @@ impl Client {
             )
             {
                 eprintln!("Client exit with error {:?}", e);
-                if let Err(e) = server_tx.send(Message::Disconnect(String::from(
+                if let Err(e) = server_tx.send(ClientMessage::Disconnect(String::from(
                     format!("{} disconnected", info.nickname.clone()),
                 )))
                 {
@@ -78,15 +83,15 @@ impl Client {
     fn main_loop(
         self,
         mut stream: TcpStream,
-        server_tx: &Sender<Message>,
+        server_tx: &Sender<ClientMessage>,
         client_rx: Receiver<ServerMessage>,
-    ) -> Result<(), std::sync::mpsc::SendError<Message>> {
+    ) -> Result<(), std::sync::mpsc::SendError<ClientMessage>> {
         let _ = stream.set_read_timeout(Some(Duration::new(1, 0)));
 
         loop {
             match utils::read_line(&stream) {
                 Ok(line) => {
-                    server_tx.send(Message::Text(
+                    server_tx.send(ClientMessage::Text(
                         self.info.nickname.clone() + " : " +
                             line.as_str() + "\n",
                     ))?;
@@ -96,9 +101,9 @@ impl Client {
                         ErrorKind::TimedOut | ErrorKind::WouldBlock => (),
                         e => {
                             println!("{:?}", e);
-                            server_tx.send(
-                                Message::Disconnect(self.info.nickname.clone()),
-                            )?;
+                            server_tx.send(ClientMessage::Disconnect(
+                                self.info.nickname.clone(),
+                            ))?;
 
                             break;
                         }

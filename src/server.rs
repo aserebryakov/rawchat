@@ -3,19 +3,17 @@ use std::net::TcpListener;
 use std::thread::{Builder, JoinHandle};
 use std::sync::mpsc::{Sender, Receiver};
 use std::collections::HashMap;
-
-
-use client;
+use client::{Client, ClientMessage, ClientInfo};
 
 
 pub struct Server {
-    rx: Receiver<client::Message>,
+    rx: Receiver<ClientMessage>,
 }
 
 
 pub struct Listener {
     listener: TcpListener,
-    tx: Sender<client::Message>,
+    tx: Sender<ClientMessage>,
 }
 
 
@@ -28,7 +26,7 @@ pub enum ServerMessage {
 
 
 impl Listener {
-    pub fn new(tx: Sender<client::Message>) -> Result<Listener, std::io::Error> {
+    pub fn new(tx: Sender<ClientMessage>) -> Result<Listener, std::io::Error> {
         let listener = TcpListener::bind("0.0.0.0:40000")?;
         Ok(Listener { listener, tx })
     }
@@ -45,7 +43,7 @@ impl Listener {
             builder.spawn(move || {
                 match stream {
                     Ok(stream) => {
-                        if let Err(e) = client::Client::new(stream, server_tx) {
+                        if let Err(e) = Client::new(stream, server_tx) {
                             eprintln!("Failed to create a client {:?}", e);
                         }
                     }
@@ -60,7 +58,7 @@ impl Listener {
 
 
 impl Server {
-    pub fn new(rx: Receiver<client::Message>) -> Server {
+    pub fn new(rx: Receiver<ClientMessage>) -> Server {
         Server { rx }
     }
 
@@ -75,7 +73,7 @@ impl Server {
             loop {
                 match self.rx.recv() {
                     Ok(value) => match value {
-                        client::Message::Connect(info) => {
+                        ClientMessage::Connect(info) => {
                             println!("{} is connected", info.nickname);
                             let _ = info.tx.send(
                                 ServerMessage::Text(format!("Greetings, {}\n", info.nickname)));
@@ -85,14 +83,14 @@ impl Server {
 
                             clients.insert(info.nickname.clone(), info);
                         },
-                        client::Message::Disconnect(nickname) => {
+                        ClientMessage::Disconnect(nickname) => {
                             clients.remove(&nickname);
                             println!("{} is disconnected", nickname);
 
                             Server::multicast_text(&clients,
                                 format!("server: {} left\n", nickname));
                         },
-                        client::Message::Text(text) => {
+                        ClientMessage::Text(text) => {
                             Server::multicast_text(&clients, text);
                         },
                     },
@@ -108,7 +106,7 @@ impl Server {
     }
 
 
-    fn multicast_text(clients: &HashMap<String, client::ClientInfo>, text: String) {
+    fn multicast_text(clients: &HashMap<String, ClientInfo>, text: String) {
         for (_, val) in clients.iter() {
             val.tx.send(ServerMessage::Text(text.clone())).unwrap();
         }
