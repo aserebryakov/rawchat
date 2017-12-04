@@ -5,14 +5,13 @@ use std::io::{ErrorKind, Write};
 use std::thread::Builder;
 use std::time::Duration;
 use std::clone::Clone;
-
-
 use utils;
+use server::ServerMessage;
 
 
 pub struct ClientInfo {
     pub nickname: String,
-    pub tx: Sender<String>,
+    pub tx: Sender<ServerMessage>,
 }
 
 
@@ -40,7 +39,7 @@ pub struct Client {
 
 impl Client {
     pub fn new(mut stream: TcpStream, server_tx: Sender<Message>) -> Result<(), std::io::Error> {
-        let (tx, rx): (Sender<String>, Receiver<String>) = channel();
+        let (tx, rx): (Sender<ServerMessage>, Receiver<ServerMessage>) = channel();
 
         let builder = Builder::new();
         builder.spawn(move || {
@@ -80,7 +79,7 @@ impl Client {
         self,
         mut stream: TcpStream,
         server_tx: &Sender<Message>,
-        client_rx: Receiver<String>,
+        client_rx: Receiver<ServerMessage>,
     ) -> Result<(), std::sync::mpsc::SendError<Message>> {
         let _ = stream.set_read_timeout(Some(Duration::new(1, 0)));
 
@@ -108,9 +107,14 @@ impl Client {
             };
 
             match client_rx.recv_timeout(Duration::new(1, 0)) {
-                Ok(line) => {
-                    match stream.write(line.as_bytes()).unwrap() {
-                        _ => (),
+                Ok(msg) => {
+                    match msg {
+                        ServerMessage::Text(line) => {
+                            match stream.write(line.as_bytes()).unwrap() {
+                                _ => (),
+                            }
+                        }
+                        _ => eprintln!("Message is not supported"),
                     }
                 }
                 _ => (),

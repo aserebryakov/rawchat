@@ -19,6 +19,14 @@ pub struct Listener {
 }
 
 
+#[allow(dead_code)]
+pub enum ServerMessage {
+    ConnectOk,
+    Disconnect,
+    Text(String),
+}
+
+
 impl Listener {
     pub fn new(tx: Sender<client::Message>) -> Result<Listener, std::io::Error> {
         let listener = TcpListener::bind("0.0.0.0:40000")?;
@@ -69,7 +77,8 @@ impl Server {
                     Ok(value) => match value {
                         client::Message::Connect(info) => {
                             println!("{} is connected", info.nickname);
-                            let _ = info.tx.send(format!("Greetings, {}\n", info.nickname));
+                            let _ = info.tx.send(
+                                ServerMessage::Text(format!("Greetings, {}\n", info.nickname)));
 
                             Server::multicast_text(&clients,
                                 format!("server: {} is joined to conversation\n", info.nickname));
@@ -101,7 +110,7 @@ impl Server {
 
     fn multicast_text(clients: &HashMap<String, client::ClientInfo>, text: String) {
         for (_, val) in clients.iter() {
-            val.tx.send(text.clone()).unwrap();
+            val.tx.send(ServerMessage::Text(text.clone())).unwrap();
         }
     }
 }
