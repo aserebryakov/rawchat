@@ -44,9 +44,11 @@ impl Client {
 
         let builder = Builder::new();
         builder.spawn(move || {
-            let _ = stream
-                .write("Greetings!\nPlease enter your nickname: ".as_bytes())
-                .unwrap();
+            if let Err(e) = stream.write("Greetings!\nPlease enter your nickname: ".as_bytes()) {
+                eprintln!("Failed to request the clients nickname : {:?}", e);
+                ()
+            }
+
             let nickname = utils::read_line(&stream).unwrap();
 
             let info = ClientInfo { nickname, tx };
