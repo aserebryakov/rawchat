@@ -17,9 +17,16 @@ pub struct Listener {
 }
 
 
+pub enum ConnectErrorCause {
+    NicknameAlreadyUsed,
+    GeneralError,
+}
+
+
 #[allow(dead_code)]
 pub enum ServerMessage {
     ConnectOk,
+    ConnectError(ConnectErrorCause),
     Disconnect,
     Text(String),
 }
@@ -73,7 +80,7 @@ impl Server {
             loop {
                 match self.rx.recv() {
                     Ok(value) => match value {
-                        ClientMessage::Connect(info) => {
+                        ClientMessage::TryConnect(info) => {
                             println!("{} is connected", info.nickname);
                             let _ = info.tx.send(
                                 ServerMessage::Text(format!("Greetings, {}\n", info.nickname)));

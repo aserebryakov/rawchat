@@ -26,7 +26,7 @@ impl Clone for ClientInfo {
 
 
 pub enum ClientMessage {
-    Connect(ClientInfo),
+    TryConnect(ClientInfo),
     Disconnect(String),
     Text(String),
 }
@@ -56,7 +56,7 @@ impl Client {
             let info = ClientInfo { nickname, tx };
 
             let _ = server_tx
-                .send(ClientMessage::Connect(info.clone()))
+                .send(ClientMessage::TryConnect(info.clone()))
                 .unwrap();
 
             if let Err(e) = Client::main_loop(
