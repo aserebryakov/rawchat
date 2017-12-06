@@ -17,10 +17,18 @@ pub struct Listener {
 }
 
 
-#[allow(dead_code)]
+#[derive(Clone)]
+pub enum Reason {
+    NicknameAlreadyUsed,
+    GeneralError,
+}
+
+
+#[derive(Clone)]
 pub enum ServerMessage {
     ConnectOk,
-    Disconnect,
+    ConnectError(Reason),
+    Disconnect(Reason),
     Text(String),
 }
 
@@ -72,43 +80,72 @@ impl Server {
 
             loop {
                 match self.rx.recv() {
-                    Ok(value) => match value {
-                        ClientMessage::Connect(info) => {
-                            println!("{} is connected", info.nickname);
-                            let _ = info.tx.send(
-                                ServerMessage::Text(format!("Greetings, {}\n", info.nickname)));
+                    Ok(value) => {
+                        match value {
+                            ClientMessage::TryConnect(info) => {
+                                println!(
+                                    "Client tries to connect with the nickname {}",
+                                    info.nickname
+                                );
 
-                            Server::multicast_text(&clients,
-                                format!("server: {} is joined to conversation\n", info.nickname));
+                                if !clients.contains_key(&info.nickname) {
+                                    let _ = info.tx.send(ServerMessage::ConnectOk);
 
-                            clients.insert(info.nickname.clone(), info);
-                        },
-                        ClientMessage::Disconnect(nickname) => {
-                            clients.remove(&nickname);
-                            println!("{} is disconnected", nickname);
+                                    let _ = info.tx.send(ServerMessage::Text(
+                                        format!("Greetings, {}\n", info.nickname),
+                                    ));
 
-                            Server::multicast_text(&clients,
-                                format!("server: {} left\n", nickname));
-                        },
-                        ClientMessage::Text(text) => {
-                            Server::multicast_text(&clients, text);
-                        },
-                    },
+                                    Server::multicast(
+                                        &clients,
+                                        ServerMessage::Text(format!(
+                                            "Server: {} is connected to the conversation",
+                                            info.nickname
+                                        )),
+                                    );
+
+                                    println!(
+                                        "Client with the nickname {} is connected",
+                                        info.nickname
+                                    );
+
+                                    clients.insert(info.nickname.clone(), info);
+                                } else {
+                                    let _ = info.tx.send(ServerMessage::ConnectError(
+                                        Reason::NicknameAlreadyUsed,
+                                    ));
+                                }
+                            }
+                            ClientMessage::Disconnect(nickname) => {
+                                clients.remove(&nickname);
+                                println!("{} is disconnected", nickname);
+
+                                Server::multicast(
+                                    &clients,
+                                    ServerMessage::Text(format!("server: {} left\n", nickname)),
+                                );
+                            }
+                            ClientMessage::Text(text) => {
+                                Server::multicast(&clients, ServerMessage::Text(text));
+                            }
+                        }
+                    }
                     Err(e) => {
                         println!("{:?}", e);
-                        Server::multicast_text(&clients,
-                            String::from("Server fault. You are disconnected.\n"));
+                        Server::multicast(
+                            &clients,
+                            ServerMessage::Disconnect(Reason::GeneralError),
+                        );
                         break;
-                    },
+                    }
                 };
             }
         })
     }
 
 
-    fn multicast_text(clients: &HashMap<String, ClientInfo>, text: String) {
+    fn multicast(clients: &HashMap<String, ClientInfo>, msg: ServerMessage) {
         for (_, val) in clients.iter() {
-            val.tx.send(ServerMessage::Text(text.clone())).unwrap();
+            val.tx.send(msg.clone()).unwrap();
         }
     }
 }
