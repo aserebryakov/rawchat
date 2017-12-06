@@ -107,7 +107,9 @@ impl Client {
                         ServerMessage::ConnectError(e) => {
                             match e {
                                 Reason::NicknameAlreadyUsed => {
-                                    stream.write("Nickname already used. Try again.\n".as_bytes())?;
+                                    stream.write(
+                                        "Nickname already used. Try again.\n".as_bytes(),
+                                    )?;
                                 }
                                 Reason::GeneralError => {
                                     stream.write(
@@ -145,7 +147,7 @@ impl Client {
         server_tx: &Sender<ClientMessage>,
         client_rx: Receiver<ServerMessage>,
     ) -> Result<(), std::sync::mpsc::SendError<ClientMessage>> {
-        let _ = stream.set_read_timeout(Some(Duration::new(1, 0)));
+        let _ = stream.set_read_timeout(Some(Duration::from_millis(200)));
 
         loop {
             match utils::read_line(&stream) {
@@ -170,7 +172,7 @@ impl Client {
                 }
             };
 
-            match client_rx.recv_timeout(Duration::new(1, 0)) {
+            match client_rx.recv_timeout(Duration::from_millis(200)) {
                 Ok(msg) => {
                     match msg {
                         ServerMessage::Text(line) => {

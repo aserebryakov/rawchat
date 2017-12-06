@@ -77,7 +77,6 @@ impl Server {
         builder.spawn(move || {
             println!("Running server main...");
             let mut clients = HashMap::new();
-
             loop {
                 match self.rx.recv() {
                     Ok(value) => {
@@ -91,14 +90,12 @@ impl Server {
                                 if !clients.contains_key(&info.nickname) {
                                     let _ = info.tx.send(ServerMessage::ConnectOk);
 
-                                    let _ = info.tx.send(ServerMessage::Text(
-                                        format!("Greetings, {}\n", info.nickname),
-                                    ));
+                                    Server::greet(&info, &clients);
 
                                     Server::multicast(
                                         &clients,
                                         ServerMessage::Text(format!(
-                                            "Server: {} is connected to the conversation",
+                                            "Server: {} is joined to the conversation",
                                             info.nickname
                                         )),
                                     );
@@ -121,7 +118,9 @@ impl Server {
 
                                 Server::multicast(
                                     &clients,
-                                    ServerMessage::Text(format!("server: {} left\n", nickname)),
+                                    ServerMessage::Text(
+                                        format!("Server: {} left the conversation\n", nickname),
+                                    ),
                                 );
                             }
                             ClientMessage::Text(text) => {
@@ -146,6 +145,18 @@ impl Server {
     fn multicast(clients: &HashMap<String, ClientInfo>, msg: ServerMessage) {
         for (_, val) in clients.iter() {
             val.tx.send(msg.clone()).unwrap();
+        }
+    }
+
+
+    fn greet(info: &ClientInfo, clients: &HashMap<String, ClientInfo>) {
+        let _ = info.tx.send(ServerMessage::Text(format!(
+            "Greetings, {}\nFollowing People are in chat room:\n",
+            info.nickname
+        )));
+
+        for (key, _) in clients.iter() {
+            let _ = info.tx.send(ServerMessage::Text(format!("- {}\n", key)));
         }
     }
 }
