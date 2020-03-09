@@ -8,18 +8,10 @@ use std::thread::Builder;
 use std::time::Duration;
 use utils;
 
+#[derive(Clone)]
 pub struct ClientInfo {
     pub nickname: String,
     pub tx: Sender<ServerMessage>,
-}
-
-impl Clone for ClientInfo {
-    fn clone(&self) -> ClientInfo {
-        ClientInfo {
-            nickname: self.nickname.clone(),
-            tx: self.tx.clone(),
-        }
-    }
 }
 
 pub enum ClientMessage {
@@ -48,7 +40,7 @@ impl Client {
     }
 
     fn run_main_loop(mut self) -> Result<(), std::io::Error> {
-        if let Err(e) = self.main_loop() {
+        self.main_loop().or_else(|e| {
             eprintln!("Client exit with error {:?}", e);
             if let Err(e) = self.server_tx.send(ClientMessage::Disconnect(String::from(format!(
                 "{} disconnected",
@@ -56,16 +48,16 @@ impl Client {
             )))) {
                 eprintln!("Couldn't send the disconnect {:?}", e);
             }
-        }
 
-        Ok(())
+            Ok(())
+        })
     }
 
     fn main_loop(&mut self) -> Result<(), std::io::Error> {
         let _ = self.stream.set_read_timeout(Some(Duration::from_millis(200)));
 
         loop {
-            self.read_line_from_stream(&self.stream, &self.server_tx)?;
+            self.read_line_from_stream()?;
             self.write_to_stream();
         }
     }
@@ -126,21 +118,17 @@ impl Client {
         }
     }
 
-    fn read_line_from_stream(
-        &self,
-        stream: &TcpStream,
-        server_tx: &Sender<ClientMessage>,
-    ) -> Result<(), std::io::Error> {
-        match utils::read_line(&stream) {
+    fn read_line_from_stream(&self) -> Result<(), std::io::Error> {
+        match utils::read_line(&self.stream) {
             Ok(line) => {
-                server_tx.send(ClientMessage::Text(self.info.nickname.clone() + " : " + line.as_str() + "\n")).unwrap();
+                self.server_tx.send(ClientMessage::Text(self.info.nickname.clone() + " : " + line.as_str() + "\n")).unwrap();
                 Ok(())
             },
             Err(e) => match e.kind() {
                 ErrorKind::TimedOut | ErrorKind::WouldBlock => Ok(()),
                 e => {
                     println!("{:?}", e);
-                    server_tx.send(ClientMessage::Disconnect(self.info.nickname.clone())).unwrap();
+                    self.server_tx.send(ClientMessage::Disconnect(self.info.nickname.clone())).unwrap();
                     Err(std::io::Error::new(e, "Error reading line"))
                 }
             },
