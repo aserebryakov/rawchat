@@ -30,6 +30,9 @@ pub enum ClientMessage {
 
 pub struct Client {
     info: ClientInfo,
+    stream: TcpStream,
+    server_tx: Sender<ClientMessage>,
+    client_rx: Receiver<ServerMessage>,
 }
 
 impl Client {
@@ -38,48 +41,41 @@ impl Client {
 
         let builder = Builder::new();
         builder.spawn(
-            move || match Client::try_to_connect(&stream, &server_tx, tx, &rx) {
-                Ok(info) => {
-                    Client::run_main_loop(Client { info: info.clone() }, stream, server_tx, rx);
-                }
-                Err(e) => {
-                    eprintln!("Client connection error {:?}", e);
-                }
-            },
+            move || Client::try_to_connect(stream, server_tx, tx, rx).and_then(Client::run_main_loop)
         )?;
 
         Ok(())
     }
 
-    fn run_main_loop(self, stream: TcpStream, server_tx: Sender<ClientMessage>, rx: Receiver<ServerMessage>) {
-        if let Err(e) = self.main_loop(stream, &server_tx, rx) {
+    fn run_main_loop(mut self) -> Result<(), std::io::Error> {
+        if let Err(e) = self.main_loop() {
             eprintln!("Client exit with error {:?}", e);
-            if let Err(e) = server_tx.send(ClientMessage::Disconnect(String::from(format!("{} disconnected", self.info.nickname.clone())))) {
+            if let Err(e) = self.server_tx.send(ClientMessage::Disconnect(String::from(format!(
+                "{} disconnected",
+                self.info.nickname.clone()
+            )))) {
                 eprintln!("Couldn't send the disconnect {:?}", e);
             }
         }
+
+        Ok(())
     }
 
-    fn main_loop(
-        &self,
-        mut stream: TcpStream,
-        server_tx: &Sender<ClientMessage>,
-        client_rx: Receiver<ServerMessage>,
-    ) -> Result<(), std::sync::mpsc::SendError<ClientMessage>> {
-        let _ = stream.set_read_timeout(Some(Duration::from_millis(200)));
+    fn main_loop(&mut self) -> Result<(), std::io::Error> {
+        let _ = self.stream.set_read_timeout(Some(Duration::from_millis(200)));
 
         loop {
-            self.read_line_from_stream(&mut stream, &server_tx)?;
-            self.write_to_stream(&mut stream, &client_rx);
+            self.read_line_from_stream(&self.stream, &self.server_tx)?;
+            self.write_to_stream();
         }
     }
 
     fn try_to_connect(
-        mut stream: &TcpStream,
-        server_tx: &Sender<ClientMessage>,
+        mut stream: TcpStream,
+        server_tx: Sender<ClientMessage>,
         client_tx: Sender<ServerMessage>,
-        client_rx: &Receiver<ServerMessage>,
-    ) -> Result<ClientInfo, std::io::Error> {
+        client_rx: Receiver<ServerMessage>,
+    ) -> Result<Client, std::io::Error> {
         loop {
             stream.write("Greetings!\nPlease enter your nickname: ".as_bytes())?;
 
@@ -100,7 +96,7 @@ impl Client {
 
             match client_rx.recv() {
                 Ok(msg) => match msg {
-                    ServerMessage::ConnectOk => return Ok(info),
+                    ServerMessage::ConnectOk => return Ok(Client{info, stream, server_tx, client_rx}),
                     ServerMessage::ConnectError(e) => match e {
                         Reason::NicknameAlreadyUsed => {
                             stream.write("Nickname already used. Try again.\n".as_bytes())?;
@@ -132,27 +128,29 @@ impl Client {
 
     fn read_line_from_stream(
         &self,
-        stream: &mut TcpStream,
+        stream: &TcpStream,
         server_tx: &Sender<ClientMessage>,
-    ) -> Result<(), std::sync::mpsc::SendError<ClientMessage>> {
+    ) -> Result<(), std::io::Error> {
         match utils::read_line(&stream) {
-            Ok(line) => server_tx.send(ClientMessage::Text(
-                self.info.nickname.clone() + " : " + line.as_str() + "\n",
-            )),
+            Ok(line) => {
+                server_tx.send(ClientMessage::Text(self.info.nickname.clone() + " : " + line.as_str() + "\n")).unwrap();
+                Ok(())
+            },
             Err(e) => match e.kind() {
                 ErrorKind::TimedOut | ErrorKind::WouldBlock => Ok(()),
                 e => {
                     println!("{:?}", e);
-                    server_tx.send(ClientMessage::Disconnect(self.info.nickname.clone()))
+                    server_tx.send(ClientMessage::Disconnect(self.info.nickname.clone())).unwrap();
+                    Err(std::io::Error::new(e, "Error reading line"))
                 }
             },
         }
     }
 
-    fn write_to_stream(&self, stream: &mut TcpStream, client_rx: &Receiver<ServerMessage>) {
-        match client_rx.recv_timeout(Duration::from_millis(200)) {
+    fn write_to_stream(&mut self) {
+        match self.client_rx.recv_timeout(Duration::from_millis(200)) {
             Ok(msg) => match msg {
-                ServerMessage::Text(line) => match stream.write(line.as_bytes()).unwrap() {
+                ServerMessage::Text(line) => match self.stream.write(line.as_bytes()).unwrap() {
                     _ => (),
                 },
                 _ => eprintln!("Message is not supported"),
