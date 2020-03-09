@@ -1,28 +1,24 @@
+use client::{Client, ClientInfo, ClientMessage};
 use std;
-use std::net::TcpListener;
-use std::thread::{Builder, JoinHandle};
-use std::sync::mpsc::{Sender, Receiver};
 use std::collections::HashMap;
-use client::{Client, ClientMessage, ClientInfo};
-
+use std::net::TcpListener;
+use std::sync::mpsc::{Receiver, Sender};
+use std::thread::{Builder, JoinHandle};
 
 pub struct Server {
     rx: Receiver<ClientMessage>,
 }
-
 
 pub struct Listener {
     listener: TcpListener,
     tx: Sender<ClientMessage>,
 }
 
-
 #[derive(Clone)]
 pub enum Reason {
     NicknameAlreadyUsed,
     GeneralError,
 }
-
 
 #[derive(Clone)]
 pub enum ServerMessage {
@@ -32,16 +28,13 @@ pub enum ServerMessage {
     Text(String),
 }
 
-
 impl Listener {
     pub fn new(tx: Sender<ClientMessage>) -> Result<Listener, std::io::Error> {
         let listener = TcpListener::bind("0.0.0.0:40000")?;
         Ok(Listener { listener, tx })
     }
 
-
     pub fn listen(self) -> Result<(), std::io::Error> {
-
         println!("Waiting for connections...");
 
         for stream in self.listener.incoming() {
@@ -64,12 +57,10 @@ impl Listener {
     }
 }
 
-
 impl Server {
     pub fn new(rx: Receiver<ClientMessage>) -> Server {
         Server { rx }
     }
-
 
     pub fn run(self) -> Result<JoinHandle<()>, std::io::Error> {
         let builder = Builder::new();
@@ -79,55 +70,51 @@ impl Server {
             let mut clients = HashMap::new();
             loop {
                 match self.rx.recv() {
-                    Ok(value) => {
-                        match value {
-                            ClientMessage::TryConnect(info) => {
-                                println!(
-                                    "Client tries to connect with the nickname {}",
-                                    info.nickname
-                                );
+                    Ok(value) => match value {
+                        ClientMessage::TryConnect(info) => {
+                            println!(
+                                "Client tries to connect with the nickname {}",
+                                info.nickname
+                            );
 
-                                if !clients.contains_key(&info.nickname) {
-                                    let _ = info.tx.send(ServerMessage::ConnectOk);
+                            if !clients.contains_key(&info.nickname) {
+                                let _ = info.tx.send(ServerMessage::ConnectOk);
 
-                                    Server::greet(&info, &clients);
-
-                                    Server::multicast(
-                                        &clients,
-                                        ServerMessage::Text(format!(
-                                            "Server: {} is joined to the conversation",
-                                            info.nickname
-                                        )),
-                                    );
-
-                                    println!(
-                                        "Client with the nickname {} is connected",
-                                        info.nickname
-                                    );
-
-                                    clients.insert(info.nickname.clone(), info);
-                                } else {
-                                    let _ = info.tx.send(ServerMessage::ConnectError(
-                                        Reason::NicknameAlreadyUsed,
-                                    ));
-                                }
-                            }
-                            ClientMessage::Disconnect(nickname) => {
-                                clients.remove(&nickname);
-                                println!("{} is disconnected", nickname);
+                                Server::greet(&info, &clients);
 
                                 Server::multicast(
                                     &clients,
-                                    ServerMessage::Text(
-                                        format!("Server: {} left the conversation\n", nickname),
-                                    ),
+                                    ServerMessage::Text(format!(
+                                        "Server: {} is joined to the conversation",
+                                        info.nickname
+                                    )),
                                 );
-                            }
-                            ClientMessage::Text(text) => {
-                                Server::multicast(&clients, ServerMessage::Text(text));
+
+                                println!("Client with the nickname {} is connected", info.nickname);
+
+                                clients.insert(info.nickname.clone(), info);
+                            } else {
+                                let _ = info
+                                    .tx
+                                    .send(ServerMessage::ConnectError(Reason::NicknameAlreadyUsed));
                             }
                         }
-                    }
+                        ClientMessage::Disconnect(nickname) => {
+                            clients.remove(&nickname);
+                            println!("{} is disconnected", nickname);
+
+                            Server::multicast(
+                                &clients,
+                                ServerMessage::Text(format!(
+                                    "Server: {} left the conversation\n",
+                                    nickname
+                                )),
+                            );
+                        }
+                        ClientMessage::Text(text) => {
+                            Server::multicast(&clients, ServerMessage::Text(text));
+                        }
+                    },
                     Err(e) => {
                         println!("{:?}", e);
                         Server::multicast(
@@ -141,13 +128,11 @@ impl Server {
         })
     }
 
-
     fn multicast(clients: &HashMap<String, ClientInfo>, msg: ServerMessage) {
         for (_, val) in clients.iter() {
             val.tx.send(msg.clone()).unwrap();
         }
     }
-
 
     fn greet(info: &ClientInfo, clients: &HashMap<String, ClientInfo>) {
         let _ = info.tx.send(ServerMessage::Text(format!(

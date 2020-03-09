@@ -1,9 +1,8 @@
-mod server;
 mod client;
+mod server;
 mod utils;
-use std::sync::mpsc::{channel, Sender, Receiver};
 use client::ClientMessage;
-
+use std::sync::mpsc::{channel, Receiver, Sender};
 
 pub fn run() -> Result<(), std::io::Error> {
     println!("Initializing...");

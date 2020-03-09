@@ -3,7 +3,6 @@ use std::io::prelude::*;
 use std::io::ErrorKind;
 use std::net::TcpStream;
 
-
 pub fn read_line(mut stream: &TcpStream) -> Result<String, std::io::Error> {
     let mut line = String::new();
 
